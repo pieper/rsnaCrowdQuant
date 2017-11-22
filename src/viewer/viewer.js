@@ -34,22 +34,31 @@ export default {
   $viewer: $('.viewer-wrapper'),
   $overlay: $('.loading-overlay'),
   numImagesLoaded: 0,
-  getNextCase() {
+  imageIdsToLoad: [],
+  options: {},
+
+  getNextCase(options={}) {
+    this.options.onFinishedLoading = options.onFinishedLoading || function () {};
     this.$overlay.removeClass('invisible').addClass('loading');
     const enabledElement = cornerstone.getEnabledElement(this.element);
 
-    Files.getCaseImages().then((imageIds) => {
+    Files.getCaseImages(options).then((imageIds) => {
         console.time('Loading All Images');
         
+        if (! this.loadEventCallback) {
+          this.loadEventCallback = function(event) {
+            this.numImagesLoaded += 1;
+            console.log(this.numImagesLoaded / this.imageIdsToLoad.length * 100);
+            if (this.numImagesLoaded === this.imageIdsToLoad.length) {
+              console.timeEnd('Loading All Images');
+              this.options.onFinishedLoading();
+            }
+          };
+          this.loadEventCallback = this.loadEventCallback.bind(this);
+          cornerstone.events.addEventListener(IMAGE_LOADED_EVENT, this.loadEventCallback);
+        }
         this.numImagesLoaded = 0;
-        cornerstone.events.removeEventListener(IMAGE_LOADED_EVENT);
-        cornerstone.events.addEventListener(IMAGE_LOADED_EVENT, e => {
-          this.numImagesLoaded += 1;
-          console.log(this.numImagesLoaded / imageIds.length * 100);
-          if (this.numImagesLoaded === imageIds.length) {
-            console.timeEnd('Loading All Images');
-          }
-        });
+        this.imageIdsToLoad = imageIds;
 
         cornerstone.loadImage(imageIds[0]).then((image) => {
             this.$overlay.removeClass('loading').addClass('invisible');
@@ -87,5 +96,36 @@ export default {
 
     // currentSeriesIndex = 0;//a hack to get series in order
     this.getNextCase();
+
+    // for testing and debugging
+    window.rsnaCrowdQuant = window.rsnaCrowdQuant || {};
+    window.rsnaCrowdQuant.viewer = this;
+    window.rsnaCrowdQuant.files = Files;
+    window.rsnaCrowdQuant.tools = Tools;
+    window.rsnaCrowdQuant.commands = Commands;
+    window.rsnaCrowdQuant.menu = Menu;
+  },
+
+  //
+  // tests
+  //
+  //
+  loadAllGroundTruth() {
+    window.rsnaCrowdQuant.dbs.groundTruthDB.allDocs({include_docs: true}).then((groundTruthDocs) => {
+      let processOneGroundTruth = function() {
+        let row = groundTruthDocs.rows.pop();
+        if (row) {
+          window.rsnaCrowdQuant.files.getSeriesUIDForInstanceUID(row.doc.instanceUID).then((seriesUID) => {
+            window.rsnaCrowdQuant.viewer.getNextCase({
+              seriesUID: seriesUID, 
+              onFinishedLoading: processOneGroundTruth
+            });
+          })
+        } else {
+          console.log('loaded all ground truth');
+        }
+      }
+      processOneGroundTruth();
+    })
   }
 }

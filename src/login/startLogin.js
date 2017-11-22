@@ -20,6 +20,11 @@ $('.login-wrapper form').off('submit').on('submit', function (evt) {
     Login.$loginForm.addClass('invisible');
 
     Viewer.initViewer();
+
+    // TODO: for testing
+    Viewer.loadAllGroundTruth()
+
+
   }).catch((err) => {
     $('#login-error').text(`Username ${username} is not found. Try another username or sign up for a new account`)
     $('#login-error').removeClass('invisible');

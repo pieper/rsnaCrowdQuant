@@ -3,12 +3,19 @@ import Login from '../login/login';
 import {chronicleURL, chronicleDB, measurementsDB} from '../db/db';
 
 export default {
-  getCaseImages() {
+  getCaseImages(options={}) {
     const $overlay = $('.loading-overlay');
     $overlay.addClass('loading');
     $overlay.removeClass('invisible');
 
-    return this.getChronicleImageIDs().then((caseStudy) => {
+    let casePromise;
+    if (options.seriesUID) {
+      casePromise = this.getImageIDsForSeriesUID(options.seriesUID);
+    } else {
+      casePromise = this.getChronicleImageIDs();
+    }
+
+    return casePromise.then((caseStudy) => {
       if (!caseStudy || !caseStudy.urls) {
         throw new Error('No case study or no URLs provided');
       }
@@ -26,40 +33,35 @@ export default {
   seriesUID_A: undefined,
 
   getChronicleImageIDs () {
-    return chronicleDB.query("instances/context", {
-      reduce : true,
+    var annotatorID = Login.username;
+    return this.getNextSeriesForAnnotator(annotatorID
+    ).then ((seriesUID) => {
+      return this.getImageIDsForSeriesUID(seriesUID);
+    });
+  },
+
+  getImageIDsForSeriesUID (seriesUID) {
+
+    if(!this.currentSeriesIndex) {
+      this.currentSeriesIndex = 0;
+    }
+    this.currentSeriesIndex++;
+    console.log('series Index:', this.currentSeriesIndex);
+
+    //const key = data.rows[this.currentSeriesIndex].key;
+
+    // if(currentSeriesIndex >= data.rows.length){
+    //   currentSeriesIndex=0;
+    // }
+
+    this.seriesUID_A = seriesUID;
+    console.log('series UID:', seriesUID);
+
+    return chronicleDB.query("instances/seriesInstances", {
+      startkey : seriesUID,
+      endkey : seriesUID + '\u9999',
       stale : 'update_after',
-      // key: [["UnspecifiedInstitution", "TCGA-17-Z011"], ["UnspecifiedStudyDescription", "1.3.6.1.4.1.14519.5.2.1.7777.9002.242742387344636595876380532248"]],
-      // startkey : [['UnspecifiedInstitution', 'TCGA-17-Z011']], // only show the prostates - they basically work
-      // endkey: [['UnspecifiedInstitution', 'TCGA-17-Z013']],
-      group_level : 3,
-    }).then((data) => {
-
-      var annotatorID = Login.username;
-      return this.getNextSeriesForAnnotator(annotatorID);
-  }).then ((seriesUID) => {
-
-      if(!this.currentSeriesIndex) {
-        this.currentSeriesIndex = 0;
-      }
-      this.currentSeriesIndex++;
-      console.log('series Index:', this.currentSeriesIndex);
-
-      //const key = data.rows[this.currentSeriesIndex].key;
-
-      // if(currentSeriesIndex >= data.rows.length){
-      //   currentSeriesIndex=0;
-      // }
-
-      this.seriesUID_A = seriesUID;
-      console.log('series UID:', seriesUID);
-
-      return chronicleDB.query("instances/seriesInstances", {
-        startkey : seriesUID,
-        endkey : seriesUID + '\u9999',
-        stale : 'update_after',
-        reduce : false,
-      });
+      reduce : false,
     }).then((data) => {
       // console.log('instance data:', data);
       const instanceUIDs = [];
@@ -72,6 +74,11 @@ export default {
       // TODO: Switch to some study or series-level call
       // It is quite slow to wait on metadata for every single image
       // each retrieved in separate calls
+      // TODO: for now this is used because we make no assumptions about
+      // the contents of the database and we calculate on the fly.  Once the
+      // set of series is defined we can precalculate anything we need
+      // in order to optimize (e.g. here we are really only accessing
+      // the dataset ocuments so we can sort them by image number).
       return Promise.all(instanceUIDs.map((uid) => {
         return chronicleDB.get(uid);
       }));
@@ -168,6 +175,17 @@ export default {
         }
       }
       return leastMeasured.seriesUID;
-    })
+    }).catch((err) => {
+      throw err;
+    });
+  },
+
+  getSeriesUIDForInstanceUID (instanceUID) {
+    return chronicleDB.get(instanceUID).then(function (result) {
+      const seriesInstanceUIDTag = "0020000E";
+      return(result.dataset[seriesInstanceUIDTag].Value);
+    }).catch((err) => {
+      throw err;
+    });
   }
 }
