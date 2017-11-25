@@ -22,7 +22,7 @@ $('.login-wrapper form').off('submit').on('submit', function (evt) {
     Viewer.initViewer();
 
     // TODO: for testing
-    Viewer.loadAllGroundTruth()
+    //Viewer.loadAllGroundTruth()
 
 
   }).catch((err) => {
